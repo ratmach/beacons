@@ -1,122 +1,116 @@
 package ratmach.workshop.beacontransmitter;
 
-import android.Manifest;
-import android.annotation.TargetApi;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.pm.PackageManager;
-import android.os.Build;
-import android.os.RemoteException;
-import android.support.v7.app.AlertDialog;
+import android.content.Intent;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
-import android.widget.Button;
 import android.widget.TextView;
 
-import org.altbeacon.beacon.Beacon;
-import org.altbeacon.beacon.BeaconConsumer;
-import org.altbeacon.beacon.BeaconManager;
-import org.altbeacon.beacon.BeaconParser;
-import org.altbeacon.beacon.BeaconTransmitter;
-import org.altbeacon.beacon.MonitorNotifier;
-import org.altbeacon.beacon.Region;
+import com.estimote.sdk.Beacon;
+import com.estimote.sdk.BeaconManager;
+import com.estimote.sdk.Region;
+import com.estimote.sdk.SystemRequirementsChecker;
+
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.UUID;
 
-public class MainActivity extends AppCompatActivity implements BeaconConsumer {
+public class MainActivity extends AppCompatActivity{
     protected static final String TAG = "MonitoringActivity";
     private BeaconManager beaconManager;
     TextView status = null;
+    private Region region;
 
     private static final int PERMISSION_REQUEST_COARSE_LOCATION = 1;
+
+    private HashSet<String> discoveredMacs = new HashSet<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Button startTrans = (Button) findViewById(R.id.startTransmitting);
-        Button startRButton = (Button) findViewById(R.id.startRecieving);
+
+        SystemRequirementsChecker.checkWithDefaultDialogs(this);
         status = (TextView) findViewById(R.id.status);
-        assert startTrans != null;
+        beaconManager = new BeaconManager(getApplicationContext());
+        beaconManager.setRangingListener(new BeaconManager.RangingListener() {
+            @Override
+            public void onBeaconsDiscovered(Region region, List<Beacon> list) {
+                StringBuffer b = new StringBuffer();
+                b.append("სულ:");
+                b.append(String.valueOf(list.size()));
+                for (Beacon beacon: list){
+                    b.append("\n - \n");
+                    b.append(beacon.getProximityUUID());
+                    b.append("\n");
+                    b.append(beacon.getMacAddress());
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            // Android M Permission check 
-            if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                final AlertDialog.Builder builder = new AlertDialog.Builder(this);
-                builder.setTitle("This app needs location access");
-                builder.setMessage("Please grant location access so this app can detect beacons.");
-                builder.setPositiveButton(android.R.string.ok, null);
-                builder.setOnDismissListener(new DialogInterface.OnDismissListener() {
-                    @TargetApi(Build.VERSION_CODES.M)
-                    public void onDismiss(DialogInterface dialog) {
-                        requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, PERMISSION_REQUEST_COARSE_LOCATION);
+                    b.append("\n ~ ");
+                    b.append(Math.pow(10, (beacon.getMeasuredPower() - beacon.getRssi()) / 20.0f));
+                    b.append("მეტრში \n");
+                    if(!discoveredMacs.contains(beacon.getMacAddress().toHexString())){
+                        StringBuffer c = new StringBuffer();
+                        c.append("თქვენგან ");
+                        c.append(beacon.getRssi() / beacon.getMeasuredPower());
+                        c.append(" მეტრში აღმოჩენილია ბიქონი");
+                        showNotification("ვხედავ ბიქონს", c.toString());
+                        discoveredMacs.add(beacon.getMacAddress().toHexString());
                     }
-                });
-                builder.show();
-            }
-        }
-
-        startTrans.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Beacon beacon = new Beacon.Builder()
-                        .setId1("2f234454-cf6d-4a0f-adf2-f4911ba9ffa6")
-                        .setId2("1")
-                        .setId3("2")
-                        .setManufacturer(0x0118)
-                        .setTxPower(-59)
-                        .setDataFields(Arrays.asList(new Long[]{0l}))
-                        .build();
-                BeaconParser beaconParser = new BeaconParser()
-                        .setBeaconLayout("m:2-3=beac,i:4-19,i:20-21,i:22-23,p:24-24,d:25-25");
-                BeaconTransmitter beaconTransmitter = new BeaconTransmitter(getApplicationContext(), beaconParser);
-                beaconTransmitter.startAdvertising(beacon);
-                status.setText("გადაცემა");
+                }
+                status.setText(b.toString());
+                Log.d("discovered", region.toString());
             }
         });
-        final Context c = this;
-        final BeaconConsumer b = this;
-        startRButton.setOnClickListener(new View.OnClickListener() {
+        region = new Region("ranged region",
+                UUID.fromString("B9407F30-F5F8-466E-AFF9-25556B57FE6D"), null, null);
+        beaconManager.startRanging(region);
+    }
+
+    public void showNotification(String title, String message) {
+        Intent notifyIntent = new Intent(this, MainActivity.class);
+        notifyIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivities(this, 0,
+                new Intent[] { notifyIntent }, PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification notification = new Notification.Builder(this)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build();
+        notification.defaults |= Notification.DEFAULT_SOUND;
+        NotificationManager notificationManager =
+                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        notificationManager.notify(1, notification);
+    }
+
+    @Override
+    public void onResume(){
+        super.onResume();
+
+        SystemRequirementsChecker.checkWithDefaultDialogs(this);
+        beaconManager.connect(new BeaconManager.ServiceReadyCallback() {
             @Override
-            public void onClick(View v) {
-                beaconManager = BeaconManager.getInstanceForApplication(c);
-                beaconManager.getBeaconParsers().add(new BeaconParser().setBeaconLayout("m:2-3=beac,i:4-19,i:20-21,i:22-23,p:24-24,d:25-25"));
-                beaconManager.bind(b);
+            public void onServiceReady() {
+                beaconManager.startRanging(region);
             }
         });
-
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        beaconManager.unbind(this);
     }
-
     @Override
-    public void onBeaconServiceConnect() {
-        beaconManager.addMonitorNotifier(new MonitorNotifier() {
-            @Override
-            public void didEnterRegion(Region region) {
-                status.setText("ვხედავ ბიქონს");
-            }
+    protected void onPause() {
+        beaconManager.stopRanging(region);
 
-            @Override
-            public void didExitRegion(Region region) {
-                status.setText("ვეღარ ვხედავ (მზეს) კიარადა ბიქონს");
-            }
-
-            @Override
-            public void didDetermineStateForRegion(int state, Region region) {
-                status.setText("ვეღარ ვხედავ ბიქონს: " + state);
-            }
-        });
-
-        try {
-            beaconManager.startMonitoringBeaconsInRegion(new Region("myMonitoringUniqueId", null, null, null));
-        } catch (RemoteException e) {
-        }
+        super.onPause();
     }
 }
