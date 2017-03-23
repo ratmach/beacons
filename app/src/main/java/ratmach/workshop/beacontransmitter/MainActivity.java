@@ -5,8 +5,8 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.widget.TextView;
 
@@ -15,8 +15,6 @@ import com.estimote.sdk.BeaconManager;
 import com.estimote.sdk.Region;
 import com.estimote.sdk.SystemRequirementsChecker;
 
-
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
@@ -52,7 +50,9 @@ public class MainActivity extends AppCompatActivity{
                     b.append(beacon.getMacAddress());
 
                     b.append("\n ~ ");
-                    b.append(Math.pow(10, (beacon.getMeasuredPower() - beacon.getRssi()) / 20.0f));
+                    double distance = Math.pow(10, (beacon.getMeasuredPower() - beacon.getRssi()) / 20.0f);
+
+                    b.append(distance);
                     b.append("მეტრში \n");
                     if(!discoveredMacs.contains(beacon.getMacAddress().toHexString())){
                         StringBuffer c = new StringBuffer();
@@ -73,7 +73,8 @@ public class MainActivity extends AppCompatActivity{
     }
 
     public void showNotification(String title, String message) {
-        Intent notifyIntent = new Intent(this, MainActivity.class);
+        Intent notifyIntent = new Intent(this, TouristActivity.class);
+        notifyIntent.putExtra("id",1);
         notifyIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivities(this, 0,
                 new Intent[] { notifyIntent }, PendingIntent.FLAG_UPDATE_CURRENT);
@@ -109,7 +110,6 @@ public class MainActivity extends AppCompatActivity{
     }
     @Override
     protected void onPause() {
-        beaconManager.stopRanging(region);
 
         super.onPause();
     }
